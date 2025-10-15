@@ -1,4 +1,4 @@
-package log
+package logging
 
 import (
 	"encoding/json"
@@ -28,7 +28,7 @@ func (l Level) String() string {
 	case LevelInfo:
 		return "INFO"
 	case LevelWarn:
-		return "WARN"
+	return "WARN"
 	case LevelError:
 		return "ERROR"
 	case LevelFatal:
