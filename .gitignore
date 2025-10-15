@@ -1,0 +1,18 @@
+# Binaries
+dns-blocker
+
+# Local Configuration
+config.yaml
+
+# Log files
+*.log
+
+# IDE and Editor specific files
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Test coverage profiles
+*.out
+*.prof
