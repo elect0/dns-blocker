@@ -3,14 +3,17 @@ package main
 import (
 	"fmt"
 	"github.com/elect0/dns-blocker/internal/config"
-	"log"
+	"github.com/elect0/dns-blocker/internal/logging"
 )
 
 func main() {
+
 	config, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("error while loading config: %v", err)
+		return
 	}
+
+	logLevel, err := logging.string
 
 	fmt.Printf("Configuration loaded successfully:\n%+v\n", config)
 }
