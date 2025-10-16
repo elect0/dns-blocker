@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"github.com/elect0/dns-blocker/internal/config"
 	"github.com/elect0/dns-blocker/internal/dns"
@@ -47,17 +49,50 @@ func main() {
 		logger.Fatal("failed to create dns handler", err, nil)
 	}
 
-	server := &Dns.Server{
+	udpServer := &Dns.Server{
 		Addr:    config.ListenAddress,
 		Net:     "udp",
 		Handler: handler,
 	}
 
-	logger.Info("starting dns server..", map[string]string{"address": config.ListenAddress})
-
-	err = server.ListenAndServe()
-	if err != nil {
-		logger.Fatal("failed to start dns server", err, nil)
+	tcpServer := &Dns.Server{
+		Addr:    config.ListenAddress,
+		Net:     "tcp",
+		Handler: handler,
 	}
 
+	go func() {
+		logger.Info("starting dns server.. (udp)", map[string]string{"address": config.ListenAddress})
+
+		if err := udpServer.ListenAndServe(); err != nil {
+			logger.Fatal("failed to start udp server", err, nil)
+		}
+
+	}()
+
+	go func() {
+		logger.Info("starting dns server.. (tcp)", map[string]string{"address": config.ListenAddress})
+
+		if err := tcpServer.ListenAndServe(); err != nil {
+			logger.Fatal("failed to start tcp server", err, nil)
+		}
+
+	}()
+
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+
+	<-quit
+	logger.Warn("shutting down server...", nil)
+
+	if err := udpServer.Shutdown(); err != nil {
+		logger.Error("failed to shut down udp server", err, nil)
+	}
+
+	if err := tcpServer.Shutdown(); err != nil {
+		logger.Error("failed to shut down tcp server", err, nil)
+	}
+
+	logger.Info("server shut down gracefully", nil)
 }
