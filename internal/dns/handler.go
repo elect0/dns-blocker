@@ -47,9 +47,10 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 	msg := new(dns.Msg)
 	msg.SetReply(r)
 	msg.Authoritative = true
-
 	question := r.Question[0]
-	logProps := map[string]string{"domain": question.Name, "type": dns.TypeToString[question.Qtype]}
+
+	cleanDomain := strings.TrimSuffix(question.Name, ".")
+	logProps := map[string]string{"domain": cleanDomain, "type": dns.TypeToString[question.Qtype]}
 
 	if ip, ok := h.customRecords[question.Name]; ok {
 		h.logger.Info("domain matched a custom record", logProps)
@@ -65,20 +66,18 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	if _, ok := h.blocklist[question.Name]; ok {
+	if _, ok := h.blocklist[cleanDomain]; ok {
 		h.logger.Info("domain is on the blocklist", logProps)
-
 		msg.SetRcode(r, dns.RcodeNameError)
 		w.WriteMsg(msg)
 		return
-	}
+	} 
 
 	h.logger.Debug("forwarding query to upstream server", logProps)
-	client := new(dns.Client)
 
-	response, _, err := client.Exchange(r, h.upstreamServer)
+	response, err := forwardDoH(r, h.upstreamServer)
 	if err != nil {
-		h.logger.Error("failed to forward query", err, logProps)
+		h.logger.Error("failed to forward query to doh upstream server", err, logProps)
 		msg.SetRcode(r, dns.RcodeServerFailure)
 		w.WriteMsg(msg)
 		return
