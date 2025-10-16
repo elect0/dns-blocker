@@ -5,6 +5,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/elect0/dns-blocker/internal/logging"
 	"github.com/miekg/dns"
@@ -16,8 +17,13 @@ type Handler struct {
 	customRecords  map[string]net.IP
 	upstreamServer string
 
-	cache      map[string]*dns.Msg
+	cache      map[string]*cacheEntry
 	cacheMutex sync.RWMutex
+}
+
+type cacheEntry struct {
+	msg    *dns.Msg
+	expiry time.Time
 }
 
 func NewHandler(logger *logging.Logger, blocklist map[string]struct{}, customRecordsConfig map[string]string, upstreamServer string) (*Handler, error) {
@@ -39,7 +45,7 @@ func NewHandler(logger *logging.Logger, blocklist map[string]struct{}, customRec
 		blocklist:      blocklist,
 		customRecords:  parsedRecords,
 		upstreamServer: upstreamServer,
-		cache:          make(map[string]*dns.Msg),
+		cache:          make(map[string]*cacheEntry),
 	}, nil
 }
 
@@ -75,12 +81,12 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 
 	cacheKey := question.Name + dns.TypeToString[question.Qtype]
 	h.cacheMutex.RLock()
-	cachedMsg, found := h.cache[cacheKey]
+	entry, found := h.cache[cacheKey]
 	h.cacheMutex.RUnlock()
-	
-	if found {
+
+	if found && time.Now().Before(entry.expiry) {
 		h.logger.Info("cache hit: serving response from cache", logProps)
-		response := *cachedMsg
+		response := *entry.msg
 		response.SetReply(r)
 		w.WriteMsg(&response)
 		return
@@ -96,10 +102,24 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		return
 	}
 
-	h.cacheMutex.Lock()
-	h.cache[cacheKey] = response.Copy()
-	h.cacheMutex.Unlock()
-	h.logger.Info("response cached", logProps)
+	if len(response.Answer) > 0 {
+		ttl := response.Answer[0].Header().Header().Ttl
+		for _, rr := range response.Answer {
+			if rr.Header().Header().Ttl < ttl {
+				ttl = rr.Header().Header().Ttl
+			}
+		}
+
+		h.cacheMutex.Lock()
+		h.cache[cacheKey] = &cacheEntry{
+			msg:    response.Copy(),
+			expiry: time.Now().Add(time.Duration(ttl) * time.Second),
+		}
+		h.cacheMutex.Unlock()
+
+		propsWithTTL := map[string]string{"domain": cleanDomain, "ttl": fmt.Sprintf("%d", ttl)}
+		h.logger.Info("response cached", propsWithTTL)
+	}
 
 	w.WriteMsg(response)
 }
