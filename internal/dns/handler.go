@@ -71,7 +71,20 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		msg.SetRcode(r, dns.RcodeNameError)
 		w.WriteMsg(msg)
 		return
-	} 
+	}
+
+	cacheKey := question.Name + dns.TypeToString[question.Qtype]
+	h.cacheMutex.RLock()
+	cachedMsg, found := h.cache[cacheKey]
+	h.cacheMutex.RUnlock()
+	
+	if found {
+		h.logger.Info("cache hit: serving response from cache", logProps)
+		response := *cachedMsg
+		response.SetReply(r)
+		w.WriteMsg(&response)
+		return
+	}
 
 	h.logger.Debug("forwarding query to upstream server", logProps)
 
@@ -82,6 +95,11 @@ func (h *Handler) ServeDNS(w dns.ResponseWriter, r *dns.Msg) {
 		w.WriteMsg(msg)
 		return
 	}
+
+	h.cacheMutex.Lock()
+	h.cache[cacheKey] = response.Copy()
+	h.cacheMutex.Unlock()
+	h.logger.Info("response cached", logProps)
 
 	w.WriteMsg(response)
 }
