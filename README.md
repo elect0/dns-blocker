@@ -47,3 +47,8 @@ Run the server with `sudo` to use the standard DNS port (53).
 
 ```bash
 sudo ./dns-blocker
+```
+
+## System Integration
+
+To use the server, point your operating system's DNS settings to 127.0.0.1.
