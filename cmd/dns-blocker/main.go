@@ -8,6 +8,8 @@ import (
 	"github.com/elect0/dns-blocker/internal/config"
 	"github.com/elect0/dns-blocker/internal/dns"
 	logging "github.com/elect0/dns-blocker/internal/logging"
+
+	Dns "github.com/miekg/dns"
 )
 
 func main() {
@@ -33,11 +35,29 @@ func main() {
 
 	blocklist, err := dns.LoadBlocklist(config.BlocklistPath)
 	if err != nil {
-	logger.Fatal("failed to load blocklist", err, nil)
+		logger.Fatal("failed to load blocklist", err, nil)
 	}
 
 	logger.Info("blocklist loaded successfully", map[string]string{
 		"domains_loaded": fmt.Sprintf("%d", len(blocklist)),
 	})
+
+	handler, err := dns.NewHandler(logger, blocklist, config.CustomRecords, config.UpstreamServer)
+	if err != nil {
+		logger.Fatal("failed to create dns handler", err, nil)
+	}
+
+	server := &Dns.Server{
+		Addr:    config.ListenAddress,
+		Net:     "udp",
+		Handler: handler,
+	}
+
+	logger.Info("starting dns server..", map[string]string{"address": config.ListenAddress})
+
+	err = server.ListenAndServe()
+	if err != nil {
+		logger.Fatal("failed to start dns server", err, nil)
+	}
 
 }
